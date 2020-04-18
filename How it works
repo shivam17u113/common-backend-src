@@ -1,0 +1,259 @@
+Mongoose
+Async function: it always return the promiss and in that promiss it contains the value coder wants to return 
+
+
+step 0:
+we have created conncetion with database using mongoose and stoed in seperate folder called db.
+we will export this and use when ever necessary.
+
+step 1:
+  first we have to create the model using express to sotre the data into data base.
+  we have seperate folder model in src which contains the model database schema for each collection
+  we use that model by exporing to create object and store into database
+
+  step 2:
+  when any get/post/delete/patch request for particular model come then we have created seperate 
+  roter for each model and stored in src/ model folder.
+  we have created route object and using which we will mange all request related to that model.
+  we have expoted that route from each file
+
+  step 3:
+  index.js is our main server.
+  to avoid laod on single file we have devided the models into each file and then finally we use each model
+  in index file.
+  so that the routing takes place.
+  
+  below is code implemetation 
+STEP 0
+const mongoose =require('mongoose')
+// this will connect to database with name nodejs
+mongoose.connect('mongodb://127.0.0.1:27017/nodejs',{
+    useNewUrlParser:true,
+    useCreateIndex:true,
+    useUnifiedTopology: true  
+})
+
+
+STEP 1
+const mongoose =require('mongoose')
+const validator =require('validator')
+
+// this is the model for user
+const User =mongoose.model('User',
+{
+    name: {
+        type:String,
+        required:true,
+        trim:true
+    },
+    email:{
+        type:String,
+        required:true,
+        validate(value)
+        {
+                if(!validator.isEmail(value))
+                {
+                    throw new Error('Email is invalid')
+                }
+        }
+
+    },
+    age :{
+        type:Number,
+        default:0,
+    }
+})
+
+module.exports =User
+STEP2
+const express =require('express')
+const User =require('../models/user.js')
+const router = new express.Router()
+
+router.post('/user',(req,res)=>
+{
+console.log(req.body)
+
+// object for user created now it will be stored into database
+var user =new User(req.body)
+
+        user.save().then(()=>
+        {
+        res.send('user registered successfully')
+        }).catch((e)=>
+        {
+        res.status(400).send(e)
+        })
+
+})
+
+module.exports= router
+
+STEP3
+
+// this is main file of server
+// we have distributed overhead in model files
+// and finall use that router in this file
+
+const express =require('express')
+require('./db/Mongoose.js')
+const app=express()
+// the data coming in the request is parsed as json
+app.use(express.json())
+
+
+// we are importing the router from each file
+const user_router =require('./routes/user_routes.js')
+const task_router=require('./routes/task_router.js')
+
+// by this comnd it will use that router
+app.use(user_router)
+app.use(task_router)
+
+
+app.listen(3000,()=>
+{
+    console.log('listning no port 3000')
+})
+
+
+
+Mongodb can be act as a middle ware which is used to perform operations.
+To store the password we have to store in the encrypted format. User may give password password at the time of registration or updating.
+Mongoose provide the facility to act as middleware.
+We normally create model but to use mongoose as middle ware we have to use schema.
+npm i bcryptjs
+this is used to hash the password and we match the given password with the hashed password before saving to database.
+We have two methods pre or post means before saving or validation we can run the function.
+The update function by pass the middleware of mongoose so that we have to split the function.
+Initially we were using the findByIdAndUpdate but now we will find separately and update separately.
+
+When user login we can generate the token related to that user
+This is done by 'jsonwebtoken'
+
+const mongoose =require('mongoose')
+const validator =require('validator')
+const bcrypt= require('bcryptjs')
+const jwt =require('jsonwebtoken')
+
+const userSchema = new mongoose.Schema({
+    name: {
+        type:String,
+        required:true,
+        trim:true
+    },
+    email:{
+        type:String,
+        required:true,
+        validate(value)
+        {
+                if(!validator.isEmail(value))
+                {
+                    throw new Error('Email is invalid')
+                }
+        }
+
+    },
+    age :{
+        type:Number,
+        default:0,
+    },
+    password:{
+        type:String,
+        required:true,
+    },
+    Tokens:[{
+        token:{
+            type:String,
+            required:true
+        }
+    }]
+})
+
+// this are the methods we are applied on the object
+userSchema.methods.tokenGenrator =async function()
+{
+const user = this
+const token = jwt.sign({_id:user._id.toString()},'AnkitaPatil')
+user.Tokens= user.Tokens.concat({token})
+
+await user.save()
+return token
+}
+
+
+// statics are applied on model 
+userSchema.statics.findCredetials =async (email,password)=>
+{
+    console.log("email from staits",email)
+    const user = await User.findOne({ email })
+
+    if(!user)
+     throw new Error('unable to login')
+
+     const isMatch = await bcrypt.compare(password,user.password)
+
+     if(!isMatch)
+     throw new Error('unable to login')
+
+     return user
+
+}
+
+// this is the function that call before evry object saved to data base wich used User as class
+// to create object
+// do not use => syntax in this function
+userSchema.pre('save',async function (next)
+{
+const user=this
+
+console.log('in userSchema',user)
+
+if(user.isModified("password"))
+{
+    user.password= await bcrypt.hash(user.password,8)
+    console.log('in if')
+}
+
+next()
+})
+
+// this is the model for user
+const User =mongoose.model('User',userSchema)
+
+// instead of using the call back method we have used asyn function which provide the promiss with the responce
+
+
+router.post('/user/login',async(req,res)=>{
+
+try {
+        const user =await User.findCredetials(req.body.email,req.body.password)
+        const token =await user.tokenGenrator()
+        console.log('user from try ',token)
+        res.status(200).send({"message":"login successfully","toekn":token})        
+} catch (error) {
+        console.log('error',error)
+        res.status(200).send({"error":"uable to login"})
+
+}
+})
+
+
+module.exports =User
+
+Middle ware
+index.js
+//uptill now we have used app.use() for registering default function or router
+// but we can use this to set middle ware
+
+// request ----> middleware -----> router
+
+app.use((req,res)=>
+{
+if(req.method=='GET')
+      res.send('GET requests are blocked')
+
+})
+
+
+
